@@ -156,6 +156,18 @@ CREATE TABLE IF NOT EXISTS treatment_plans (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create Note Images Table
+CREATE TABLE IF NOT EXISTS note_images (
+    id SERIAL PRIMARY KEY,
+    professional_id INTEGER REFERENCES users(id),
+    image_url TEXT NOT NULL,
+    original_name VARCHAR(255),
+    label VARCHAR(255),
+    file_size BIGINT,
+    mime_type VARCHAR(50),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create User Settings Table
 CREATE TABLE IF NOT EXISTS user_settings (
     id SERIAL PRIMARY KEY,

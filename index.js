@@ -14,8 +14,8 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files (with cross-origin allowed so frontend can load images)
+app.use('/uploads', helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }), express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -29,6 +29,7 @@ app.use('/api/analytics', require('./routes/analyticsRoutes'));
 app.use('/api/settings', require('./routes/settingsRoutes'));
 app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/clinical', require('./routes/clinicalRoutes'));
+app.use('/api/images', require('./routes/imageRoutes'));
 
 // Health check
 app.get('/', (req, res) => {
