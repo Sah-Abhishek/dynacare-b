@@ -1,8 +1,9 @@
 const db = require('../config/db');
 const path = require('path');
-const fs = require('fs');
+const { Readable } = require('stream');
 const { OpenAI } = require('openai');
 const { generateMockClinicalSummary } = require('../utils/clinicalSummaryGenerator');
+const { uploadToS3 } = require('../config/s3');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -11,13 +12,22 @@ const openai = new OpenAI({
 
 exports.getRecordings = async (req, res) => {
     try {
-        const recordings = await db.query(`
-      SELECT r.*, p.full_name as patient_name 
-      FROM recordings r 
-      JOIN patients p ON r.patient_id = p.id 
-      WHERE r.professional_id = $1 
-      ORDER BY r.created_at DESC
-    `, [req.user.id]);
+        const { patientId } = req.query;
+        let query = `
+      SELECT r.*, p.full_name as patient_name
+      FROM recordings r
+      JOIN patients p ON r.patient_id = p.id
+      WHERE r.professional_id = $1`;
+        const params = [req.user.id];
+
+        if (patientId) {
+            params.push(patientId);
+            query += ` AND r.patient_id = $2`;
+        }
+
+        query += ` ORDER BY r.created_at DESC`;
+
+        const recordings = await db.query(query, params);
         res.json(recordings.rows);
     } catch (err) {
         console.error(err);
@@ -115,7 +125,7 @@ exports.getRecordingById = async (req, res) => {
     }
 };
 
-// Upload audio file and create recording
+// Upload audio file to S3 and create recording
 exports.uploadAudioFile = async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No audio file uploaded' });
@@ -129,9 +139,13 @@ exports.uploadAudioFile = async (req, res) => {
 
     try {
         const professional_id = req.user?.id || 1;
-        const audio_url = `/uploads/${req.file.filename}`;
-        const fileSizeInBytes = req.file.size;
         const format = path.extname(req.file.originalname).replace('.', '') || 'audio';
+        const filename = `audio_${Date.now()}_${Math.round(Math.random() * 1e6)}.${format}`;
+        const s3Key = `dynacare/audio/${filename}`;
+
+        // Upload to S3
+        const audio_url = await uploadToS3(req.file.buffer, s3Key, req.file.mimetype);
+        const fileSizeInBytes = req.file.size;
 
         // Parse duration if provided
         let durationInSeconds = null;
@@ -213,6 +227,48 @@ exports.generateClinicalSummary = async (req, res) => {
     }
 };
 
+// Update recording with transcript and summary
+exports.updateRecording = async (req, res) => {
+    const { id } = req.params;
+    const { transcript, summary } = req.body;
+
+    try {
+        const fields = [];
+        const values = [];
+        let paramIndex = 1;
+
+        if (transcript !== undefined) {
+            fields.push(`transcript = $${paramIndex++}`);
+            values.push(transcript);
+        }
+        if (summary !== undefined) {
+            fields.push(`summary = $${paramIndex++}`);
+            values.push(typeof summary === 'string' ? summary : JSON.stringify(summary));
+        }
+
+        if (fields.length === 0) {
+            return res.status(400).json({ message: 'No fields to update' });
+        }
+
+        values.push(id);
+        values.push(req.user?.id || 1);
+
+        const result = await db.query(
+            `UPDATE recordings SET ${fields.join(', ')} WHERE id = $${paramIndex++} AND professional_id = $${paramIndex} RETURNING *`,
+            values
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Recording not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating recording:', err.message);
+        res.status(500).json({ message: `Error updating recording: ${err.message}` });
+    }
+};
+
 // Transcribe uploaded audio file using OpenAI Whisper
 exports.transcribeAudioFile = async (req, res) => {
     if (!req.file) {
@@ -220,11 +276,15 @@ exports.transcribeAudioFile = async (req, res) => {
     }
 
     try {
-        const filePath = req.file.path;
-        console.log('Transcribing audio file:', filePath);
+        console.log('Transcribing audio file from buffer, size:', req.file.size);
+
+        // Create a File object from the buffer for OpenAI SDK
+        const file = new File([req.file.buffer], req.file.originalname, {
+            type: req.file.mimetype,
+        });
 
         const transcription = await openai.audio.transcriptions.create({
-            file: fs.createReadStream(filePath),
+            file: file,
             model: 'whisper-1',
             language: 'en',
         });

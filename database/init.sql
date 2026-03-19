@@ -168,6 +168,24 @@ CREATE TABLE IF NOT EXISTS note_images (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create Journals Table
+CREATE TABLE IF NOT EXISTS journals (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    target_audience VARCHAR(100),
+    url TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create User Journals Table (maps which user has access to which journal)
+CREATE TABLE IF NOT EXISTS user_journals (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    journal_id INTEGER REFERENCES journals(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, journal_id)
+);
+
 -- Create User Settings Table
 CREATE TABLE IF NOT EXISTS user_settings (
     id SERIAL PRIMARY KEY,

@@ -1,23 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
 const recordingController = require('../controllers/recordingController');
 const authMiddleware = require('../middleware/authMiddleware');
 
-// Multer storage config
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, path.join(__dirname, '..', 'uploads'));
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `audio_${Date.now()}_${Math.round(Math.random() * 1e6)}${path.extname(file.originalname)}`;
-        cb(null, uniqueName);
-    }
-});
-
+// Use memory storage so files go to S3, not local disk
 const upload = multer({
-    storage,
+    storage: multer.memoryStorage(),
     limits: { fileSize: 100 * 1024 * 1024 }, // 100MB max
     fileFilter: (req, file, cb) => {
         const allowedTypes = [
@@ -33,15 +22,14 @@ const upload = multer({
     }
 });
 
-// Public routes - no auth required
+// All routes require authentication
+router.use(authMiddleware);
 router.post('/upload', recordingController.createRecording);
 router.post('/upload-file', upload.single('audio'), recordingController.uploadAudioFile);
 router.post('/transcribe', upload.single('audio'), recordingController.transcribeAudioFile);
 router.post('/clinical-summary', recordingController.generateClinicalSummary);
-
-// Protected routes - require authentication
-router.use(authMiddleware);
 router.get('/', recordingController.getRecordings);
 router.get('/:id', recordingController.getRecordingById);
+router.patch('/:id', recordingController.updateRecording);
 
 module.exports = router;

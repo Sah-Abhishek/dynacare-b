@@ -86,6 +86,21 @@ INSERT INTO notes (patient_id, professional_id, appointment_id, content, status)
 )
 ON CONFLICT DO NOTHING;
 
+-- Insert journals
+INSERT INTO journals (name, target_audience, url) VALUES
+('Harrison Journal', 'Physicians', 'https://accessmedicine.mhmedical.com/book.aspx?bookid=3541'),
+('DSM-5 Journal', 'Psychiatrists', 'https://ia800707.us.archive.org/15/items/info_munsha_DSM5/DSM-5.pdf'),
+('Oxford Handbook of Medicine', 'Physicians', 'https://cloud.uobasrah.edu.iq/uploads/2023/02/09/8205Oxford%20Handbook%20of%20Clinical%20Medicine%2010th%202017%20Edition_SamanSarKo%20-%20Copy.pdf'),
+('ICD - 10', 'Psychologist', 'https://drive.google.com/file/d/1stKA9vgXTu5l8KoBpxhNLHyTbef1bkQM/view?usp=drivesdk'),
+('ICD - 11', 'Psychologist', 'https://drive.google.com/file/d/1NR2GBrzYbi1rUFC6ALlkAo_OUL3XDdaf/view?usp=drivesdk')
+ON CONFLICT DO NOTHING;
+
+-- Hardcode journal access: Demo Account (user 1) gets DSM-5, Dr. Sarah Johnson (user 2) gets Harrison
+INSERT INTO user_journals (user_id, journal_id) VALUES
+(1, (SELECT id FROM journals WHERE name = 'DSM-5 Journal')),
+(2, (SELECT id FROM journals WHERE name = 'Harrison Journal'))
+ON CONFLICT DO NOTHING;
+
 -- Verify the data was inserted
 SELECT 'Data insertion complete!' as message;
 SELECT COUNT(*) as total_users FROM users;
