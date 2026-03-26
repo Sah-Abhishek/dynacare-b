@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS note_images (
     label VARCHAR(255),
     file_size BIGINT,
     mime_type VARCHAR(50),
+    cloudinary_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

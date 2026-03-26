@@ -24,14 +24,14 @@ ON CONFLICT (email) DO NOTHING;
 
 -- Insert sample appointments (using patient IDs and professional ID 1)
 INSERT INTO appointments (patient_id, professional_id, appointment_date, duration, type, status, notes) VALUES
-((SELECT id FROM patients WHERE email = 'john.smith@email.com'), 1, (CURRENT_TIMESTAMP + INTERVAL '1 day')::timestamp + TIME '09:00:00', 60, 'Initial Consultation', 'Scheduled', 'New patient intake'),
-((SELECT id FROM patients WHERE email = 'jane.doe@email.com'), 1, (CURRENT_TIMESTAMP + INTERVAL '1 day')::timestamp + TIME '10:30:00', 45, 'Follow-up', 'Scheduled', 'Progress check-in'),
-((SELECT id FROM patients WHERE email = 'robert.wilson@email.com'), 1, (CURRENT_TIMESTAMP + INTERVAL '2 days')::timestamp + TIME '14:00:00', 60, 'Therapy Session', 'Scheduled', 'CBT session'),
-((SELECT id FROM patients WHERE email = 'maria.garcia@email.com'), 1, (CURRENT_TIMESTAMP + INTERVAL '3 days')::timestamp + TIME '11:00:00', 45, 'Therapy Session', 'Scheduled', NULL),
-((SELECT id FROM patients WHERE email = 'test.patient@email.com'), 1, CURRENT_TIMESTAMP::timestamp + TIME '15:00:00', 60, 'Therapy Session', 'Scheduled', 'Test appointment for demo'),
-((SELECT id FROM patients WHERE email = 'david.lee@email.com'), 1, (CURRENT_TIMESTAMP - INTERVAL '1 day')::timestamp + TIME '10:00:00', 60, 'Initial Consultation', 'Completed', 'Completed successfully'),
-((SELECT id FROM patients WHERE email = 'lisa.anderson@email.com'), 1, (CURRENT_TIMESTAMP - INTERVAL '2 days')::timestamp + TIME '13:00:00', 45, 'Follow-up', 'Completed', NULL),
-((SELECT id FROM patients WHERE email = 'james.taylor@email.com'), 1, (CURRENT_TIMESTAMP - INTERVAL '3 days')::timestamp + TIME '09:30:00', 60, 'Therapy Session', 'Completed', NULL)
+((SELECT id FROM patients WHERE email = 'john.smith@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP + INTERVAL '1 day') + INTERVAL '9 hours', 60, 'Initial Consultation', 'Scheduled', 'New patient intake'),
+((SELECT id FROM patients WHERE email = 'jane.doe@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP + INTERVAL '1 day') + INTERVAL '10 hours 30 minutes', 45, 'Follow-up', 'Scheduled', 'Progress check-in'),
+((SELECT id FROM patients WHERE email = 'robert.wilson@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP + INTERVAL '2 days') + INTERVAL '14 hours', 60, 'Therapy Session', 'Scheduled', 'CBT session'),
+((SELECT id FROM patients WHERE email = 'maria.garcia@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP + INTERVAL '3 days') + INTERVAL '11 hours', 45, 'Therapy Session', 'Scheduled', NULL),
+((SELECT id FROM patients WHERE email = 'test.patient@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP) + INTERVAL '15 hours', 60, 'Therapy Session', 'Scheduled', 'Test appointment for demo'),
+((SELECT id FROM patients WHERE email = 'david.lee@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP - INTERVAL '1 day') + INTERVAL '10 hours', 60, 'Initial Consultation', 'Completed', 'Completed successfully'),
+((SELECT id FROM patients WHERE email = 'lisa.anderson@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP - INTERVAL '2 days') + INTERVAL '13 hours', 45, 'Follow-up', 'Completed', NULL),
+((SELECT id FROM patients WHERE email = 'james.taylor@email.com'), 1, date_trunc('day', CURRENT_TIMESTAMP - INTERVAL '3 days') + INTERVAL '9 hours 30 minutes', 60, 'Therapy Session', 'Completed', NULL)
 ON CONFLICT DO NOTHING;
 
 -- Insert some sample recordings (for completed appointments)

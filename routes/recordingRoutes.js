@@ -12,7 +12,8 @@ const upload = multer({
         const allowedTypes = [
             'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave',
             'audio/x-wav', 'audio/ogg', 'audio/webm', 'audio/mp4',
-            'audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/flac'
+            'audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/flac',
+            'video/mp4', 'audio/x-m4a', 'application/octet-stream'
         ];
         if (allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('audio/')) {
             cb(null, true);

@@ -1,6 +1,5 @@
 const db = require('../config/db');
-const fs = require('fs');
-const path = require('path');
+const cloudinary = require('../config/cloudinary');
 
 exports.uploadImage = async (req, res) => {
     try {
@@ -9,15 +8,32 @@ exports.uploadImage = async (req, res) => {
         }
 
         const { label } = req.body;
-        const imageUrl = `/uploads/images/${req.file.filename}`;
         const fileSize = req.file.size;
         const mimeType = req.file.mimetype;
         const originalName = req.file.originalname;
 
+        // Upload buffer to Cloudinary
+        const uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'dynacare/images',
+                    resource_type: 'image',
+                },
+                (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                }
+            );
+            stream.end(req.file.buffer);
+        });
+
+        const imageUrl = uploadResult.secure_url;
+        const cloudinaryId = uploadResult.public_id;
+
         const result = await db.query(
-            `INSERT INTO note_images (professional_id, image_url, original_name, label, file_size, mime_type)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [req.user.id, imageUrl, originalName, label || null, fileSize, mimeType]
+            `INSERT INTO note_images (professional_id, image_url, original_name, label, file_size, mime_type, cloudinary_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [req.user.id, imageUrl, originalName, label || null, fileSize, mimeType, cloudinaryId]
         );
 
         res.status(201).json(result.rows[0]);
@@ -74,9 +90,10 @@ exports.deleteImage = async (req, res) => {
             return res.status(404).json({ message: 'Image not found' });
         }
 
-        const filePath = path.join(__dirname, '..', image.rows[0].image_url);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+        // Delete from Cloudinary
+        const cloudinaryId = image.rows[0].cloudinary_id;
+        if (cloudinaryId) {
+            await cloudinary.uploader.destroy(cloudinaryId);
         }
 
         await db.query('DELETE FROM note_images WHERE id = $1 AND professional_id = $2', [id, req.user.id]);

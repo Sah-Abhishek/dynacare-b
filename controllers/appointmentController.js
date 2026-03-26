@@ -3,12 +3,11 @@ const db = require('../config/db');
 exports.getAppointments = async (req, res) => {
     try {
         const appointments = await db.query(`
-      SELECT a.*, p.full_name as patient_name 
-      FROM appointments a 
-      JOIN patients p ON a.patient_id = p.id 
-      WHERE a.professional_id = $1 
+      SELECT a.*, p.full_name as patient_name
+      FROM appointments a
+      JOIN patients p ON a.patient_id = p.id
       ORDER BY a.appointment_date ASC
-    `, [req.user.id]);
+    `);
         res.json(appointments.rows);
     } catch (err) {
         console.error(err);
@@ -41,8 +40,8 @@ exports.updateAppointment = async (req, res) => {
     const { appointment_date, duration, type, status, notes } = req.body;
     try {
         const updated = await db.query(
-            'UPDATE appointments SET appointment_date = $1, duration = $2, type = $3, status = $4, notes = $5 WHERE id = $6 AND professional_id = $7 RETURNING *',
-            [appointment_date, duration, type, status, notes, req.params.id, req.user.id]
+            'UPDATE appointments SET appointment_date = $1, duration = $2, type = $3, status = $4, notes = $5 WHERE id = $6 RETURNING *',
+            [appointment_date, duration, type, status, notes, req.params.id]
         );
         if (updated.rows.length === 0) {
             return res.status(404).json({ message: 'Appointment not found' });
@@ -57,8 +56,8 @@ exports.updateAppointment = async (req, res) => {
 exports.deleteAppointment = async (req, res) => {
     try {
         const deleted = await db.query(
-            'DELETE FROM appointments WHERE id = $1 AND professional_id = $2 RETURNING *',
-            [req.params.id, req.user.id]
+            'DELETE FROM appointments WHERE id = $1 RETURNING *',
+            [req.params.id]
         );
         if (deleted.rows.length === 0) {
             return res.status(404).json({ message: 'Appointment not found' });
@@ -73,12 +72,12 @@ exports.deleteAppointment = async (req, res) => {
 exports.getTodayAppointments = async (req, res) => {
     try {
         const today = await db.query(`
-            SELECT a.*, p.full_name as patient_name 
-            FROM appointments a 
-            JOIN patients p ON a.patient_id = p.id 
+            SELECT a.*, p.full_name as patient_name
+            FROM appointments a
+            JOIN patients p ON a.patient_id = p.id
             WHERE a.appointment_date::date = CURRENT_DATE
             ORDER BY a.appointment_date ASC
-        `, []);
+        `);
 
         // Format for frontend (split date and time)
         const formatted = today.rows.map(appt => {
