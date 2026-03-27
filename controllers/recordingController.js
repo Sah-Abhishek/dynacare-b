@@ -2,7 +2,7 @@ const db = require('../config/db');
 const path = require('path');
 const { Readable } = require('stream');
 const { OpenAI } = require('openai');
-const { generateMockClinicalSummary } = require('../utils/clinicalSummaryGenerator');
+// Mock generator removed — now using real OpenAI API
 const { uploadToS3 } = require('../config/s3');
 
 const openai = new OpenAI({
@@ -198,12 +198,72 @@ exports.generateClinicalSummary = async (req, res) => {
     }
 
     try {
-        console.log('Generating clinical summary for transcript...');
+        console.log('Generating clinical summary via OpenAI...');
 
-        // Use mock generator (in production, this would call OpenAI/Claude API)
-        const summary = generateMockClinicalSummary(transcript);
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are a licensed clinical psychologist. Analyze the following therapy session transcript and produce a structured clinical summary.
 
-        // Add session metadata
+Return a JSON object with exactly this structure:
+{
+  "overview": {
+    "primaryConcerns": ["list of main concerns identified from the transcript"],
+    "mood": "patient's mood as observed (e.g. Anxious, Low, Stable, Elevated)",
+    "moodScore": number from 1-10 based on transcript content,
+    "affect": "observed affect (e.g. Constricted, Flat, Appropriate, Labile)",
+    "engagement": "level of engagement (e.g. Good, Fair, Poor, Guarded)"
+  },
+  "symptoms": {
+    "reported": ["list of symptoms mentioned or observed in transcript"],
+    "severity": "overall severity (Mild, Moderate, Severe)",
+    "duration": "duration if mentioned, otherwise 'Not specified'"
+  },
+  "riskAssessment": {
+    "level": "Low, Moderate, or High",
+    "color": "green, yellow, or red",
+    "suicidalIdeation": boolean,
+    "homicidalIdeation": boolean,
+    "concerns": ["specific risk concerns from transcript"]
+  },
+  "clinicalImpression": {
+    "possibleDiagnoses": [
+      {
+        "code": "DSM-5/ICD-10 code",
+        "name": "disorder name",
+        "confidence": "Low, Moderate, or High",
+        "evidence": "specific evidence from transcript supporting this"
+      }
+    ],
+    "functionalImpairment": "Mild, Moderate, or Severe"
+  },
+  "clinicalInsights": {
+    "themes": ["key therapeutic themes identified"],
+    "behavioralObservations": "observations about patient behavior during session"
+  },
+  "treatmentPlan": {
+    "recommendations": ["specific treatment recommendations"],
+    "followUp": "recommended follow-up timeframe",
+    "referrals": ["any referrals needed"]
+  },
+  "nextSteps": ["actionable next steps"]
+}
+
+Base everything strictly on the transcript content. Do not invent symptoms or concerns not supported by the text. If something cannot be determined from the transcript, say so.`
+                },
+                {
+                    role: "user",
+                    content: `Session transcript:\n\n${transcript}`
+                }
+            ],
+            response_format: { type: "json_object" }
+        });
+
+        const summary = JSON.parse(response.choices[0].message.content);
+
+        summary.generatedAt = new Date().toISOString();
         summary.sessionMetadata = {
             patientId: patient_id,
             duration: duration || 'N/A',
@@ -211,7 +271,7 @@ exports.generateClinicalSummary = async (req, res) => {
             wordCount: transcript.split(/\s+/).length,
         };
 
-        console.log('Clinical summary generated successfully');
+        console.log('Clinical summary generated successfully via OpenAI');
 
         res.status(200).json({
             success: true,
