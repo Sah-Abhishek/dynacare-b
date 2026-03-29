@@ -73,7 +73,7 @@ exports.updatePatient = async (req, res) => {
     try {
         const updatedPatient = await db.query(
             'UPDATE patients SET full_name = $1, email = $2, phone = $3, dob = $4, gender = $5, address = $6, insurance_provider = $7, insurance_id = $8, status = $9 WHERE id = $10 RETURNING *',
-            [full_name, email, phone, dob, gender, address, insurance_provider, insurance_id, status, req.params.id]
+            [full_name, email || null, phone || null, dob || null, gender || null, address || null, insurance_provider || null, insurance_id || null, status || 'Active', req.params.id]
         );
         if (updatedPatient.rows.length === 0) {
             return res.status(404).json({ message: 'Patient not found' });
