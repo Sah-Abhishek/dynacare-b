@@ -198,14 +198,9 @@ exports.generateClinicalSummary = async (req, res) => {
     }
 
     try {
-        console.log('Generating clinical summary via OpenAI...');
+        console.log('Generating DSM-5 and Harrison reports via OpenAI...');
 
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-                {
-                    role: "system",
-                    content: `You are a licensed clinical psychologist. Analyze the following therapy session transcript and produce a structured clinical summary.
+        const dsm5Prompt = `You are a licensed clinical psychologist. Analyze the following therapy session transcript and produce a structured clinical summary using DSM-5 (Diagnostic and Statistical Manual of Mental Disorders, 5th Edition) as your reference framework.
 
 Return a JSON object with exactly this structure:
 {
@@ -251,32 +246,98 @@ Return a JSON object with exactly this structure:
   "nextSteps": ["actionable next steps"]
 }
 
-Base everything strictly on the transcript content. Do not invent symptoms or concerns not supported by the text. If something cannot be determined from the transcript, say so.`
-                },
-                {
-                    role: "user",
-                    content: `Session transcript:\n\n${transcript}`
-                }
-            ],
-            response_format: { type: "json_object" }
-        });
+Base everything strictly on the transcript content. Do not invent symptoms or concerns not supported by the text. If something cannot be determined from the transcript, say so.`;
 
-        const summary = JSON.parse(response.choices[0].message.content);
+        const harrisonPrompt = `You are a senior physician and internist. Analyze the following clinical session transcript using Harrison's Principles of Internal Medicine as your reference framework. Focus on identifying potential medical/physical conditions, systemic diseases, and somatic symptoms that may underlie or accompany the patient's complaints.
 
-        summary.generatedAt = new Date().toISOString();
-        summary.sessionMetadata = {
-            patientId: patient_id,
-            duration: duration || 'N/A',
-            transcriptLength: transcript.length,
-            wordCount: transcript.split(/\s+/).length,
+Return a JSON object with exactly this structure:
+{
+  "overview": {
+    "primaryConcerns": ["list of main medical concerns identified from the transcript"],
+    "systemsInvolved": ["list of organ systems potentially involved, e.g. Cardiovascular, Endocrine, Neurological"],
+    "vitalSignConcerns": "any vital sign or physical concerns noted or implied"
+  },
+  "medicalFindings": {
+    "reportedSymptoms": ["list of medically relevant symptoms from the transcript"],
+    "possibleConditions": [
+      {
+        "condition": "medical condition name (e.g. Hypothyroidism, Anemia, Hypertension)",
+        "icdCode": "ICD-10 code if applicable",
+        "confidence": "Low, Moderate, or High",
+        "evidence": "specific evidence from transcript supporting this",
+        "harrisonReference": "relevant Harrison's chapter or section reference"
+      }
+    ],
+    "differentialDiagnosis": ["other conditions to rule out"]
+  },
+  "labRecommendations": {
+    "suggestedTests": [
+      {
+        "test": "lab test or investigation name",
+        "reason": "why this test is recommended based on the transcript"
+      }
+    ]
+  },
+  "medicationConsiderations": {
+    "currentMedications": ["any medications mentioned in the transcript"],
+    "potentialInteractions": "any drug interaction concerns",
+    "recommendations": ["medication-related recommendations"]
+  },
+  "treatmentPlan": {
+    "recommendations": ["specific medical treatment recommendations"],
+    "followUp": "recommended follow-up timeframe",
+    "referrals": ["specialist referrals needed, e.g. Endocrinologist, Cardiologist"]
+  },
+  "nextSteps": ["actionable medical next steps"]
+}
+
+Base everything strictly on the transcript content. Do not invent symptoms or conditions not supported by the text. If something cannot be determined from the transcript, say so. Focus on the medical/physical health perspective, not psychiatric diagnoses.`;
+
+        // Generate both reports in parallel
+        const [dsm5Response, harrisonResponse] = await Promise.all([
+            openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    { role: "system", content: dsm5Prompt },
+                    { role: "user", content: `Session transcript:\n\n${transcript}` }
+                ],
+                response_format: { type: "json_object" }
+            }),
+            openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    { role: "system", content: harrisonPrompt },
+                    { role: "user", content: `Session transcript:\n\n${transcript}` }
+                ],
+                response_format: { type: "json_object" }
+            })
+        ]);
+
+        const dsm5Summary = JSON.parse(dsm5Response.choices[0].message.content);
+        const harrisonSummary = JSON.parse(harrisonResponse.choices[0].message.content);
+
+        const metadata = {
+            generatedAt: new Date().toISOString(),
+            sessionMetadata: {
+                patientId: patient_id,
+                duration: duration || 'N/A',
+                transcriptLength: transcript.length,
+                wordCount: transcript.split(/\s+/).length,
+            }
         };
 
-        console.log('Clinical summary generated successfully via OpenAI');
+        dsm5Summary.generatedAt = metadata.generatedAt;
+        dsm5Summary.sessionMetadata = metadata.sessionMetadata;
+        harrisonSummary.generatedAt = metadata.generatedAt;
+        harrisonSummary.sessionMetadata = metadata.sessionMetadata;
+
+        console.log('Both DSM-5 and Harrison reports generated successfully');
 
         res.status(200).json({
             success: true,
-            summary: summary,
-            message: 'Clinical summary generated successfully'
+            summary: dsm5Summary,
+            harrisonSummary: harrisonSummary,
+            message: 'Clinical summaries generated successfully'
         });
     } catch (err) {
         console.error('Error generating clinical summary:', err.message);
