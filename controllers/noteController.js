@@ -52,11 +52,11 @@ exports.getNoteById = async (req, res) => {
 };
 
 exports.createNote = async (req, res) => {
-    const { patient_id, appointment_id, content, status, ai_insights } = req.body;
+    const { patient_id, appointment_id, content, status, ai_insights, session_id } = req.body;
     try {
         const newNote = await db.query(
-            'INSERT INTO notes (patient_id, professional_id, appointment_id, content, status, ai_insights) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [patient_id, req.user.id, appointment_id, content, status || 'Draft', ai_insights]
+            'INSERT INTO notes (patient_id, professional_id, appointment_id, content, status, ai_insights, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [patient_id, req.user.id, appointment_id, content, status || 'Draft', ai_insights, session_id || null]
         );
 
         // Log Activity

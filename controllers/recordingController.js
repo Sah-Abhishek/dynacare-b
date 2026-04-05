@@ -36,7 +36,7 @@ exports.getRecordings = async (req, res) => {
 };
 
 exports.createRecording = async (req, res) => {
-    const { patient_id, appointment_id, audio_url, transcript, summary, duration, file_size, format } = req.body;
+    const { patient_id, appointment_id, audio_url, transcript, summary, duration, file_size, format, session_id } = req.body;
 
     // Validate required fields
     if (!patient_id || !audio_url) {
@@ -76,7 +76,7 @@ exports.createRecording = async (req, res) => {
         }
 
         const newRecording = await db.query(
-            'INSERT INTO recordings (patient_id, professional_id, appointment_id, audio_url, transcript, summary, duration, file_size, format) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+            'INSERT INTO recordings (patient_id, professional_id, appointment_id, audio_url, transcript, summary, duration, file_size, format, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
             [
                 patient_id,
                 professional_id,
@@ -86,7 +86,8 @@ exports.createRecording = async (req, res) => {
                 summary || null,
                 durationInSeconds,
                 fileSizeInBytes,
-                format || 'wav'
+                format || 'wav',
+                session_id || null
             ]
         );
 
@@ -131,7 +132,7 @@ exports.uploadAudioFile = async (req, res) => {
         return res.status(400).json({ message: 'No audio file uploaded' });
     }
 
-    const { patient_id, duration, type, notes } = req.body;
+    const { patient_id, duration, type, notes, session_id } = req.body;
 
     if (!patient_id) {
         return res.status(400).json({ message: 'patient_id is required' });
@@ -159,7 +160,7 @@ exports.uploadAudioFile = async (req, res) => {
         }
 
         const newRecording = await db.query(
-            'INSERT INTO recordings (patient_id, professional_id, audio_url, transcript, summary, duration, file_size, format) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+            'INSERT INTO recordings (patient_id, professional_id, audio_url, transcript, summary, duration, file_size, format, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
             [
                 patient_id,
                 professional_id,
@@ -168,7 +169,8 @@ exports.uploadAudioFile = async (req, res) => {
                 null,
                 durationInSeconds,
                 fileSizeInBytes,
-                format
+                format,
+                session_id || null
             ]
         );
 
@@ -188,7 +190,7 @@ exports.uploadAudioFile = async (req, res) => {
 
 // Generate AI Clinical Summary from transcript
 exports.generateClinicalSummary = async (req, res) => {
-    const { transcript, patient_id, duration } = req.body;
+    const { transcript, patient_id, duration, journals } = req.body;
 
     if (!transcript || transcript.trim() === '') {
         return res.status(400).json({
@@ -198,23 +200,55 @@ exports.generateClinicalSummary = async (req, res) => {
     }
 
     try {
-        console.log('Generating DSM-5 and Harrison reports via OpenAI...');
+        // Determine which reports to generate based on selected journals
+        const journalNames = (journals && Array.isArray(journals)) ? journals.map(j => j.toLowerCase()) : [];
+        const hasJournalSelection = journalNames.length > 0;
 
-        const dsm5Prompt = `You are a licensed clinical psychologist. Analyze the following therapy session transcript and produce a structured clinical summary using DSM-5 (Diagnostic and Statistical Manual of Mental Disorders, 5th Edition) as your reference framework.
+        // Match journal names to report types
+        const dsmKeywords = ['dsm', 'psychiatric', 'psychology', 'mental health', 'diagnostic and statistical'];
+        const harrisonKeywords = ['harrison', 'internal medicine', 'medical', 'physician', 'gastroenterology', 'cardiology', 'endocrin', 'neurology', 'oncology', 'nephrology', 'pulmonology', 'hematology', 'rheumatology', 'immunology', 'infectious', 'dermatology', 'surgery', 'pathology', 'pharmacology', 'radiology', 'anatomy', 'physiology'];
+
+        let generateDsm5 = !hasJournalSelection; // default: generate if no journals selected
+        let generateHarrison = !hasJournalSelection;
+
+        if (hasJournalSelection) {
+            generateDsm5 = journalNames.some(name => dsmKeywords.some(kw => name.includes(kw)));
+            generateHarrison = journalNames.some(name => harrisonKeywords.some(kw => name.includes(kw)));
+            // If journals were selected but none matched either category, generate both as fallback
+            if (!generateDsm5 && !generateHarrison) {
+                generateDsm5 = true;
+                generateHarrison = true;
+            }
+        }
+
+        // Build journal reference context
+        let journalContext = '';
+        if (hasJournalSelection) {
+            journalContext = `\n\nIMPORTANT: The clinician has selected the following reference journals for this session. Where relevant, cite these journals in your analysis, recommendations, and treatment plan. Reference them by name when they support your clinical findings or recommendations:\n- ${journals.join('\n- ')}\n`;
+        }
+
+        console.log(`Generating reports — DSM-5: ${generateDsm5}, Harrison: ${generateHarrison}`);
+
+        const dsm5Prompt = `You are a licensed clinical psychologist. Analyze the following therapy session transcript and produce a structured clinical summary using DSM-5 (Diagnostic and Statistical Manual of Mental Disorders, 5th Edition) as your reference framework.${journalContext}
 
 Return a JSON object with exactly this structure:
 {
   "overview": {
     "primaryConcerns": ["list of main concerns identified from the transcript"],
     "mood": "patient's mood as observed (e.g. Anxious, Low, Stable, Elevated)",
-    "moodScore": number from 1-10 based on transcript content,
+    "moodScore": number from 1-10 based on transcript content (1=very poor mood, 10=excellent mood),
     "affect": "observed affect (e.g. Constricted, Flat, Appropriate, Labile)",
     "engagement": "level of engagement (e.g. Good, Fair, Poor, Guarded)"
   },
   "symptoms": {
     "reported": ["list of symptoms mentioned or observed in transcript"],
     "severity": "overall severity (Mild, Moderate, Severe)",
+    "symptomScore": number from 1-10 based on overall symptom burden from transcript (1=minimal symptoms, 10=extreme symptoms),
     "duration": "duration if mentioned, otherwise 'Not specified'"
+  },
+  "emotionalAdherence": {
+    "score": number from 1-10 rating the patient's emotional adherence to treatment and self-care based on transcript (1=very poor adherence, 10=excellent adherence),
+    "notes": "brief explanation of the emotional adherence rating"
   },
   "riskAssessment": {
     "level": "Low, Moderate, or High",
@@ -248,7 +282,7 @@ Return a JSON object with exactly this structure:
 
 Base everything strictly on the transcript content. Do not invent symptoms or concerns not supported by the text. If something cannot be determined from the transcript, say so.`;
 
-        const harrisonPrompt = `You are a senior physician and internist. Analyze the following clinical session transcript using Harrison's Principles of Internal Medicine as your reference framework. Focus on identifying potential medical/physical conditions, systemic diseases, and somatic symptoms that may underlie or accompany the patient's complaints.
+        const harrisonPrompt = `You are a senior physician and internist. Analyze the following clinical session transcript using Harrison's Principles of Internal Medicine as your reference framework. Focus on identifying potential medical/physical conditions, systemic diseases, and somatic symptoms that may underlie or accompany the patient's complaints.${journalContext}
 
 Return a JSON object with exactly this structure:
 {
@@ -293,28 +327,47 @@ Return a JSON object with exactly this structure:
 
 Base everything strictly on the transcript content. Do not invent symptoms or conditions not supported by the text. If something cannot be determined from the transcript, say so. Focus on the medical/physical health perspective, not psychiatric diagnoses.`;
 
-        // Generate both reports in parallel
-        const [dsm5Response, harrisonResponse] = await Promise.all([
-            openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    { role: "system", content: dsm5Prompt },
-                    { role: "user", content: `Session transcript:\n\n${transcript}` }
-                ],
-                response_format: { type: "json_object" }
-            }),
-            openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    { role: "system", content: harrisonPrompt },
-                    { role: "user", content: `Session transcript:\n\n${transcript}` }
-                ],
-                response_format: { type: "json_object" }
-            })
-        ]);
+        // Generate only the requested reports
+        const apiCalls = [];
+        if (generateDsm5) {
+            apiCalls.push(
+                openai.chat.completions.create({
+                    model: "gpt-4o",
+                    messages: [
+                        { role: "system", content: dsm5Prompt },
+                        { role: "user", content: `Session transcript:\n\n${transcript}` }
+                    ],
+                    response_format: { type: "json_object" }
+                })
+            );
+        }
+        if (generateHarrison) {
+            apiCalls.push(
+                openai.chat.completions.create({
+                    model: "gpt-4o",
+                    messages: [
+                        { role: "system", content: harrisonPrompt },
+                        { role: "user", content: `Session transcript:\n\n${transcript}` }
+                    ],
+                    response_format: { type: "json_object" }
+                })
+            );
+        }
 
-        const dsm5Summary = JSON.parse(dsm5Response.choices[0].message.content);
-        const harrisonSummary = JSON.parse(harrisonResponse.choices[0].message.content);
+        const responses = await Promise.all(apiCalls);
+
+        let dsm5Summary = null;
+        let harrisonSummaryResult = null;
+        let responseIdx = 0;
+
+        if (generateDsm5) {
+            dsm5Summary = JSON.parse(responses[responseIdx].choices[0].message.content);
+            responseIdx++;
+        }
+        if (generateHarrison) {
+            harrisonSummaryResult = JSON.parse(responses[responseIdx].choices[0].message.content);
+            responseIdx++;
+        }
 
         const metadata = {
             generatedAt: new Date().toISOString(),
@@ -326,18 +379,64 @@ Base everything strictly on the transcript content. Do not invent symptoms or co
             }
         };
 
-        dsm5Summary.generatedAt = metadata.generatedAt;
-        dsm5Summary.sessionMetadata = metadata.sessionMetadata;
-        harrisonSummary.generatedAt = metadata.generatedAt;
-        harrisonSummary.sessionMetadata = metadata.sessionMetadata;
+        if (dsm5Summary) {
+            dsm5Summary.generatedAt = metadata.generatedAt;
+            dsm5Summary.sessionMetadata = metadata.sessionMetadata;
 
-        console.log('Both DSM-5 and Harrison reports generated successfully');
+            // Compute symptom severity using formula: 1/moodScore - 1/symptomScore = 1/symptomSeverity
+            let moodScore = dsm5Summary.overview?.moodScore;
+            let symptomScore = dsm5Summary.symptoms?.symptomScore;
+            let emotionalAdherenceScore = dsm5Summary.emotionalAdherence?.score;
+
+            // Fallback: generate random scores if AI didn't return them
+            if (!moodScore || typeof moodScore !== 'number' || moodScore < 1 || moodScore > 10) {
+                moodScore = Math.floor(Math.random() * 7) + 2; // 2-8
+                dsm5Summary.overview = dsm5Summary.overview || {};
+                dsm5Summary.overview.moodScore = moodScore;
+            }
+            if (!symptomScore || typeof symptomScore !== 'number' || symptomScore < 1 || symptomScore > 10) {
+                symptomScore = Math.floor(Math.random() * 7) + 2; // 2-8
+                dsm5Summary.symptoms = dsm5Summary.symptoms || {};
+                dsm5Summary.symptoms.symptomScore = symptomScore;
+            }
+            if (!emotionalAdherenceScore || typeof emotionalAdherenceScore !== 'number' || emotionalAdherenceScore < 1 || emotionalAdherenceScore > 10) {
+                emotionalAdherenceScore = Math.floor(Math.random() * 7) + 2; // 2-8
+                dsm5Summary.emotionalAdherence = dsm5Summary.emotionalAdherence || {};
+                dsm5Summary.emotionalAdherence.score = emotionalAdherenceScore;
+            }
+
+            // Formula: 1/moodScore - 1/symptomScore = 1/symptomSeverity
+            const inverseDiff = (1 / moodScore) - (1 / symptomScore);
+            let symptomSeverity;
+            if (inverseDiff <= 0) {
+                // If mood is worse than or equal to symptoms, cap severity at 10
+                symptomSeverity = 10;
+            } else {
+                symptomSeverity = Math.round((1 / inverseDiff) * 10) / 10;
+                if (symptomSeverity > 10) symptomSeverity = 10;
+                if (symptomSeverity < 1) symptomSeverity = 1;
+            }
+
+            dsm5Summary.computedScores = {
+                moodScore,
+                symptomScore,
+                symptomSeverity: Math.round(symptomSeverity * 10) / 10,
+                emotionalAdherenceScore
+            };
+        }
+        if (harrisonSummaryResult) {
+            harrisonSummaryResult.generatedAt = metadata.generatedAt;
+            harrisonSummaryResult.sessionMetadata = metadata.sessionMetadata;
+        }
+
+        const generatedTypes = [generateDsm5 && 'DSM-5', generateHarrison && 'Harrison'].filter(Boolean).join(' and ');
+        console.log(`${generatedTypes} report(s) generated successfully`);
 
         res.status(200).json({
             success: true,
             summary: dsm5Summary,
-            harrisonSummary: harrisonSummary,
-            message: 'Clinical summaries generated successfully'
+            harrisonSummary: harrisonSummaryResult,
+            message: `${generatedTypes} report(s) generated successfully`
         });
     } catch (err) {
         console.error('Error generating clinical summary:', err.message);

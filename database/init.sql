@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS appointments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create Sessions Table (ties recording + note + assessments together)
+CREATE TABLE IF NOT EXISTS sessions (
+    id SERIAL PRIMARY KEY,
+    patient_id INTEGER REFERENCES patients(id),
+    professional_id INTEGER REFERENCES users(id),
+    appointment_id INTEGER REFERENCES appointments(id),
+    status VARCHAR(20) DEFAULT 'In Progress',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create Recordings Table
 CREATE TABLE IF NOT EXISTS recordings (
     id SERIAL PRIMARY KEY,
@@ -123,6 +134,7 @@ CREATE TABLE IF NOT EXISTS medical_history (
     type VARCHAR(50), -- 'Condition', 'Allergy', 'FamilyHistory'
     name VARCHAR(150),
     detail TEXT, -- reaction for allergy, year for condition, relation for family
+    notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -163,6 +175,31 @@ CREATE TABLE IF NOT EXISTS treatment_plans (
     status VARCHAR(20) DEFAULT 'Active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create Assessment Tokens Table (for shareable patient links)
+CREATE TABLE IF NOT EXISTS assessment_tokens (
+    id SERIAL PRIMARY KEY,
+    token VARCHAR(64) UNIQUE NOT NULL,
+    patient_id INTEGER REFERENCES patients(id),
+    professional_id INTEGER REFERENCES users(id),
+    assessment_type VARCHAR(50) NOT NULL, -- 'PHQ9', 'GAD7', etc.
+    used BOOLEAN DEFAULT FALSE,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create Assessment Responses Table
+CREATE TABLE IF NOT EXISTS assessment_responses (
+    id SERIAL PRIMARY KEY,
+    patient_id INTEGER REFERENCES patients(id),
+    professional_id INTEGER REFERENCES users(id),
+    assessment_type VARCHAR(50) NOT NULL,
+    answers JSONB NOT NULL,
+    total_score INTEGER NOT NULL,
+    difficulty VARCHAR(50),
+    token_id INTEGER REFERENCES assessment_tokens(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create Note Images Table

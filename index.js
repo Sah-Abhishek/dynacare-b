@@ -35,6 +35,8 @@ app.use('/api/clinical', require('./routes/clinicalRoutes'));
 app.use('/api/images', require('./routes/imageRoutes'));
 app.use('/api/journals', require('./routes/journalRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/assessments', require('./routes/assessmentRoutes'));
+app.use('/api/sessions', require('./routes/sessionRoutes'));
 
 // Health check
 app.get('/', (req, res) => {
