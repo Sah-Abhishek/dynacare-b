@@ -3,9 +3,7 @@ const path = require('path');
 const { Readable } = require('stream');
 const { OpenAI } = require('openai');
 // Mock generator removed — now using real OpenAI API
-const { uploadToS3 } = require('../config/s3');
-const { GetObjectCommand } = require('@aws-sdk/client-s3');
-const { s3Client, BUCKET } = require('../config/s3');
+const cloudinary = require('../config/cloudinary');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -143,12 +141,23 @@ exports.uploadAudioFile = async (req, res) => {
     try {
         const professional_id = req.user?.id || 1;
         const format = path.extname(req.file.originalname).replace('.', '') || 'audio';
-        const filename = `audio_${Date.now()}_${Math.round(Math.random() * 1e6)}.${format}`;
-        const s3Key = `dynacare/audio/${filename}`;
-
-        // Upload to S3
-        const audio_url = await uploadToS3(req.file.buffer, s3Key, req.file.mimetype);
         const fileSizeInBytes = req.file.size;
+
+        // Upload to Cloudinary
+        const audio_url = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    resource_type: 'video', // Cloudinary uses 'video' for audio files
+                    folder: 'dynacare/audio',
+                    public_id: `audio_${Date.now()}_${Math.round(Math.random() * 1e6)}`,
+                },
+                (error, result) => {
+                    if (error) return reject(error);
+                    resolve(result.secure_url);
+                }
+            );
+            Readable.from(req.file.buffer).pipe(uploadStream);
+        });
 
         // Parse duration if provided
         let durationInSeconds = null;
@@ -528,7 +537,7 @@ exports.transcribeAudioFile = async (req, res) => {
     }
 };
 
-// Proxy stream audio from S3 — solves CORS issues for playback and download
+// Proxy stream audio from Cloudinary — solves CORS issues for playback and download
 exports.streamAudio = async (req, res) => {
     const { id } = req.params;
     const download = req.query.download === 'true';
@@ -561,23 +570,19 @@ exports.streamAudio = async (req, res) => {
             return res.status(404).json({ message: 'No audio file for this recording' });
         }
 
-        // Extract S3 key from the full URL
-        const bucketPrefix = `${process.env.S3_ENDPOINT_URL}/${BUCKET}/`;
-        const s3Key = audio_url.startsWith(bucketPrefix)
-            ? audio_url.slice(bucketPrefix.length)
-            : audio_url.replace(/^https?:\/\/[^/]+\/[^/]+\//, '');
+        // Fetch audio from Cloudinary (or any remote URL)
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(audio_url);
 
-        const command = new GetObjectCommand({
-            Bucket: BUCKET,
-            Key: s3Key,
-        });
+        if (!response.ok) {
+            return res.status(502).json({ message: 'Failed to fetch audio from storage' });
+        }
 
-        const s3Response = await s3Client.send(command);
-
-        const contentType = s3Response.ContentType || `audio/${format || 'mpeg'}`;
+        const contentType = response.headers.get('content-type') || `audio/${format || 'mpeg'}`;
         res.setHeader('Content-Type', contentType);
-        if (s3Response.ContentLength) {
-            res.setHeader('Content-Length', s3Response.ContentLength);
+        const contentLength = response.headers.get('content-length');
+        if (contentLength) {
+            res.setHeader('Content-Length', contentLength);
         }
         res.setHeader('Accept-Ranges', 'bytes');
 
@@ -586,7 +591,7 @@ exports.streamAudio = async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         }
 
-        s3Response.Body.pipe(res);
+        response.body.pipe(res);
     } catch (err) {
         console.error('Error streaming audio:', err.message);
         res.status(500).json({ message: `Error streaming audio: ${err.message}` });

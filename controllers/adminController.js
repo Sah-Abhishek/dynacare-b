@@ -255,6 +255,33 @@ exports.revokeJournal = async (req, res) => {
     }
 };
 
+// Update doctor password
+exports.updateDoctorPassword = async (req, res) => {
+    const { id } = req.params;
+    const { password } = req.body;
+
+    if (!password || password.length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    try {
+        const existing = await db.query('SELECT id FROM users WHERE id = $1', [id]);
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ message: 'Doctor not found' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        await db.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
+
+        res.json({ message: 'Password updated successfully' });
+    } catch (err) {
+        console.error('Error updating doctor password:', err);
+        res.status(500).json({ message: 'Error updating password' });
+    }
+};
+
 // Get admin dashboard stats
 exports.getAdminStats = async (req, res) => {
     try {

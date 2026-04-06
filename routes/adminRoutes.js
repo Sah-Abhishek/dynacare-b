@@ -13,6 +13,7 @@ router.get('/doctor-patient-counts', adminAuthMiddleware, adminController.getDoc
 router.get('/stats', adminAuthMiddleware, adminController.getAdminStats);
 router.post('/create-doctor', adminAuthMiddleware, adminController.createDoctor);
 router.post('/create-admin', adminAuthMiddleware, adminController.createAdmin);
+router.patch('/doctor/:id/password', adminAuthMiddleware, adminController.updateDoctorPassword);
 router.get('/journals', adminAuthMiddleware, adminController.getAllJournals);
 router.get('/journal-assignments', adminAuthMiddleware, adminController.getJournalAssignments);
 router.post('/assign-journal', adminAuthMiddleware, adminController.assignJournal);

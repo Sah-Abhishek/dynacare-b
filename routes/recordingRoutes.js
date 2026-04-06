@@ -13,9 +13,15 @@ const upload = multer({
             'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave',
             'audio/x-wav', 'audio/ogg', 'audio/webm', 'audio/mp4',
             'audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/flac',
-            'video/mp4', 'audio/x-m4a', 'application/octet-stream'
+            'video/mp4', 'video/mpeg', 'video/mpg', 'audio/x-m4a',
+            'application/octet-stream', 'application/x-mpeg'
         ];
-        if (allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('audio/')) {
+        const allowedExtensions = [
+            '.mp3', '.wav', '.m4a', '.ogg', '.webm', '.aac', '.flac',
+            '.mp4', '.mpeg', '.mpg'
+        ];
+        const ext = (file.originalname || '').toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+        if (allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('audio/') || file.mimetype.startsWith('video/') || allowedExtensions.includes(ext)) {
             cb(null, true);
         } else {
             cb(new Error('Only audio files are allowed'), false);
