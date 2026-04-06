@@ -4,6 +4,8 @@ const { Readable } = require('stream');
 const { OpenAI } = require('openai');
 // Mock generator removed — now using real OpenAI API
 const { uploadToS3 } = require('../config/s3');
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, BUCKET } = require('../config/s3');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -503,10 +505,12 @@ exports.transcribeAudioFile = async (req, res) => {
             type: req.file.mimetype,
         });
 
+        const whisperLang = req.body.language || 'en';
+
         const transcription = await openai.audio.transcriptions.create({
             file: file,
             model: 'whisper-1',
-            language: 'en',
+            language: whisperLang,
         });
 
         console.log('Transcription completed, length:', transcription.text.length);
@@ -521,5 +525,70 @@ exports.transcribeAudioFile = async (req, res) => {
             success: false,
             message: `Error transcribing audio: ${err.message}`,
         });
+    }
+};
+
+// Proxy stream audio from S3 — solves CORS issues for playback and download
+exports.streamAudio = async (req, res) => {
+    const { id } = req.params;
+    const download = req.query.download === 'true';
+
+    // Auth via query param (for <audio> src and download links)
+    const token = req.query.token || req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+        return res.status(401).json({ message: 'Authorization required' });
+    }
+    let user;
+    try {
+        const jwt = require('jsonwebtoken');
+        user = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+        return res.status(401).json({ message: 'Invalid token' });
+    }
+
+    try {
+        const result = await db.query(
+            'SELECT audio_url, format FROM recordings WHERE id = $1 AND professional_id = $2',
+            [id, user.id || 1]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Recording not found' });
+        }
+
+        const { audio_url, format } = result.rows[0];
+        if (!audio_url) {
+            return res.status(404).json({ message: 'No audio file for this recording' });
+        }
+
+        // Extract S3 key from the full URL
+        const bucketPrefix = `${process.env.S3_ENDPOINT_URL}/${BUCKET}/`;
+        const s3Key = audio_url.startsWith(bucketPrefix)
+            ? audio_url.slice(bucketPrefix.length)
+            : audio_url.replace(/^https?:\/\/[^/]+\/[^/]+\//, '');
+
+        const command = new GetObjectCommand({
+            Bucket: BUCKET,
+            Key: s3Key,
+        });
+
+        const s3Response = await s3Client.send(command);
+
+        const contentType = s3Response.ContentType || `audio/${format || 'mpeg'}`;
+        res.setHeader('Content-Type', contentType);
+        if (s3Response.ContentLength) {
+            res.setHeader('Content-Length', s3Response.ContentLength);
+        }
+        res.setHeader('Accept-Ranges', 'bytes');
+
+        if (download) {
+            const filename = `recording_${id}.${format || 'mp3'}`;
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        }
+
+        s3Response.Body.pipe(res);
+    } catch (err) {
+        console.error('Error streaming audio:', err.message);
+        res.status(500).json({ message: `Error streaming audio: ${err.message}` });
     }
 };

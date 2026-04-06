@@ -23,7 +23,10 @@ const upload = multer({
     }
 });
 
-// All routes require authentication
+// Stream endpoint — accepts token via query param (for <audio> elements and direct downloads)
+router.get('/:id/stream', recordingController.streamAudio);
+
+// All other routes require authentication via header
 router.use(authMiddleware);
 router.post('/upload', recordingController.createRecording);
 router.post('/upload-file', upload.single('audio'), recordingController.uploadAudioFile);
