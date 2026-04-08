@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 const s3Client = new S3Client({
     region: process.env.S3_REGION || 'auto',
@@ -32,4 +32,13 @@ const deleteFromS3 = async (key) => {
     await s3Client.send(command);
 };
 
-module.exports = { s3Client, uploadToS3, deleteFromS3, BUCKET };
+// Returns the raw GetObject response (Body is a Readable stream)
+const getFromS3 = async (key) => {
+    const command = new GetObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+    });
+    return await s3Client.send(command);
+};
+
+module.exports = { s3Client, uploadToS3, deleteFromS3, getFromS3, BUCKET };

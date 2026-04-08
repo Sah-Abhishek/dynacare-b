@@ -233,6 +233,24 @@ CREATE TABLE IF NOT EXISTS user_journals (
     UNIQUE(user_id, journal_id)
 );
 
+-- Create Reports Table (saved PDF clinical reports stored on S3)
+CREATE TABLE IF NOT EXISTS reports (
+    id SERIAL PRIMARY KEY,
+    patient_id INTEGER REFERENCES patients(id) ON DELETE CASCADE,
+    professional_id INTEGER REFERENCES users(id),
+    session_id INTEGER REFERENCES sessions(id),
+    title VARCHAR(255),
+    file_name VARCHAR(255) NOT NULL,
+    file_url TEXT NOT NULL,
+    s3_key TEXT NOT NULL,
+    file_size BIGINT,
+    summary JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_patient ON reports(patient_id);
+CREATE INDEX IF NOT EXISTS idx_reports_professional ON reports(professional_id);
+
 -- Create User Settings Table
 CREATE TABLE IF NOT EXISTS user_settings (
     id SERIAL PRIMARY KEY,

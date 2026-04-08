@@ -37,10 +37,15 @@ app.use('/api/journals', require('./routes/journalRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/assessments', require('./routes/assessmentRoutes'));
 app.use('/api/sessions', require('./routes/sessionRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
 
 // Health check
-app.get('/', (req, res) => {
-    res.json({ message: 'Welcome to DynaCare API' });
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        message: 'Welcome to DynaCare API',
+        version: require('./package.json').version,
+    });
 });
 
 // 404 Handler
