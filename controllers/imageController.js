@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const cloudinary = require('../config/cloudinary');
+const { uploadToS3, deleteFromS3 } = require('../config/s3');
 
 exports.uploadImage = async (req, res) => {
     try {
@@ -12,28 +12,15 @@ exports.uploadImage = async (req, res) => {
         const mimeType = req.file.mimetype;
         const originalName = req.file.originalname;
 
-        // Upload buffer to Cloudinary
-        const uploadResult = await new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-                {
-                    folder: 'dynacare/images',
-                    resource_type: 'image',
-                },
-                (error, result) => {
-                    if (error) reject(error);
-                    else resolve(result);
-                }
-            );
-            stream.end(req.file.buffer);
-        });
-
-        const imageUrl = uploadResult.secure_url;
-        const cloudinaryId = uploadResult.public_id;
+        // Upload buffer to S3 (MinIO)
+        const ext = (originalName || 'image.jpg').split('.').pop() || 'jpg';
+        const s3Key = `dynacare/images/image_${Date.now()}_${Math.round(Math.random() * 1e6)}.${ext}`;
+        const imageUrl = await uploadToS3(req.file.buffer, s3Key, mimeType);
 
         const result = await db.query(
             `INSERT INTO note_images (professional_id, image_url, original_name, label, file_size, mime_type, cloudinary_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [req.user.id, imageUrl, originalName, label || null, fileSize, mimeType, cloudinaryId]
+            [req.user.id, imageUrl, originalName, label || null, fileSize, mimeType, s3Key]
         );
 
         res.status(201).json(result.rows[0]);
@@ -90,10 +77,10 @@ exports.deleteImage = async (req, res) => {
             return res.status(404).json({ message: 'Image not found' });
         }
 
-        // Delete from Cloudinary
-        const cloudinaryId = image.rows[0].cloudinary_id;
-        if (cloudinaryId) {
-            await cloudinary.uploader.destroy(cloudinaryId);
+        // Delete from S3 (cloudinary_id column now stores the S3 key)
+        const s3Key = image.rows[0].cloudinary_id;
+        if (s3Key) {
+            try { await deleteFromS3(s3Key); } catch (e) { console.warn('S3 delete failed:', e.message); }
         }
 
         await db.query('DELETE FROM note_images WHERE id = $1 AND professional_id = $2', [id, req.user.id]);

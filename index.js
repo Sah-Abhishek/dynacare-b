@@ -10,22 +10,23 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-    crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
 }));
 const allowedOrigins = [
-    'https://dynacare.in',
-    'https://www.dynacare.in',
-    'https://app2.safentro.com',
+  'https://dynacare.in',
+  'https://www.dynacare.in',
+  'https://app2.safentro.com',
+  'http://localhost:5173'
 ];
 app.use(cors({
-    origin: (origin, callback) => {
-        // Allow non-browser requests (curl, server-to-server) which have no Origin header
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error(`CORS: origin ${origin} not allowed`));
-    },
-    credentials: true,
+  origin: (origin, callback) => {
+    // Allow non-browser requests (curl, server-to-server) which have no Origin header
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
 }));
 app.use(morgan('dev'));
 app.use(express.json());
@@ -54,25 +55,25 @@ app.use('/api/reports', require('./routes/reportRoutes'));
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        message: 'Welcome to DynaCare API',
-        version: require('./package.json').version,
-    });
+  res.json({
+    status: 'ok',
+    message: 'Welcome to DynaCare API',
+    version: require('./package.json').version,
+  });
 });
 
 // 404 Handler
 app.use((req, res) => {
-    console.log(`404 Not Found: ${req.method} ${req.url}`);
-    res.status(404).json({ message: `Route ${req.method} ${req.url} not found on this server.` });
+  console.log(`404 Not Found: ${req.method} ${req.url}`);
+  res.status(404).json({ message: `Route ${req.method} ${req.url} not found on this server.` });
 });
 
 // Start Server
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 }).on('error', (err) => {
-    console.error('SERVER STARTUP ERROR:', err.message);
-    if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use. Please try a different port or kill the existing process.`);
-    }
+  console.error('SERVER STARTUP ERROR:', err.message);
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Please try a different port or kill the existing process.`);
+  }
 });

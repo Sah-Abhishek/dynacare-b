@@ -1,9 +1,8 @@
 const db = require('../config/db');
 const path = require('path');
-const { Readable } = require('stream');
 const { OpenAI } = require('openai');
 // Mock generator removed — now using real OpenAI API
-const cloudinary = require('../config/cloudinary');
+const { uploadToS3, getFromS3, deleteFromS3 } = require('../config/s3');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -143,21 +142,10 @@ exports.uploadAudioFile = async (req, res) => {
         const format = path.extname(req.file.originalname).replace('.', '') || 'audio';
         const fileSizeInBytes = req.file.size;
 
-        // Upload to Cloudinary
-        const audio_url = await new Promise((resolve, reject) => {
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    resource_type: 'video', // Cloudinary uses 'video' for audio files
-                    folder: 'dynacare/audio',
-                    public_id: `audio_${Date.now()}_${Math.round(Math.random() * 1e6)}`,
-                },
-                (error, result) => {
-                    if (error) return reject(error);
-                    resolve(result.secure_url);
-                }
-            );
-            Readable.from(req.file.buffer).pipe(uploadStream);
-        });
+        // Upload to S3 (MinIO)
+        const s3Key = `dynacare/audio/audio_${Date.now()}_${Math.round(Math.random() * 1e6)}.${format}`;
+        const contentType = req.file.mimetype || `audio/${format === 'wav' ? 'wav' : 'mpeg'}`;
+        const audio_url = await uploadToS3(req.file.buffer, s3Key, contentType);
 
         // Parse duration if provided
         let durationInSeconds = null;
@@ -537,7 +525,7 @@ exports.transcribeAudioFile = async (req, res) => {
     }
 };
 
-// Proxy stream audio from Cloudinary — solves CORS issues for playback and download
+// Proxy stream audio from storage — solves CORS issues for playback and download
 exports.streamAudio = async (req, res) => {
     const { id } = req.params;
     const download = req.query.download === 'true';
@@ -570,7 +558,7 @@ exports.streamAudio = async (req, res) => {
             return res.status(404).json({ message: 'No audio file for this recording' });
         }
 
-        // Fetch audio from Cloudinary (or any remote URL)
+        // Fetch audio from storage (S3/MinIO or legacy remote URL)
         const fetch = (await import('node-fetch')).default;
         const response = await fetch(audio_url);
 

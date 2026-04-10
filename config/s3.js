@@ -1,7 +1,7 @@
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 const s3Client = new S3Client({
-    region: process.env.S3_REGION || 'auto',
+    region: process.env.S3_REGION || 'us-east-1',
     endpoint: process.env.S3_ENDPOINT_URL,
     credentials: {
         accessKeyId: process.env.S3_ACCESS_KEY,
